@@ -1,0 +1,92 @@
+{
+  "name": "Webcam Reactions",
+  "current_scene": "Webcam Reactions Scene",
+  "current_program_scene": "Webcam Reactions Scene",
+  "scene_order": [
+    {
+      "name": "Webcam Reactions Scene"
+    }
+  ],
+  "sources": [
+    {
+      "id": "scene",
+      "versioned_id": "scene",
+      "name": "Webcam Reactions Scene",
+      "uuid": "19f3bff8-21fd-47d0-ac69-640b089035b2",
+      "enabled": true,
+      "flags": 0,
+      "mixers": 0,
+      "volume": 1.0,
+      "muted": false,
+      "settings": {
+        "custom_size": false,
+        "id_counter": 1,
+        "items": [
+          {
+            "name": "Webcam Reactions",
+            "source_uuid": "6cb51ab8-f9ea-40f3-88b6-f3b23b39a8e6",
+            "visible": true,
+            "locked": false,
+            "rot": 0.0,
+            "pos": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "scale": {
+              "x": 1.0,
+              "y": 1.0
+            },
+            "align": 5,
+            "bounds_type": 2,
+            "bounds_align": 0,
+            "bounds": {
+              "x": 1920.0,
+              "y": 1080.0
+            },
+            "crop_left": 0,
+            "crop_top": 0,
+            "crop_right": 0,
+            "crop_bottom": 0,
+            "id": 1,
+            "group_item_backup": false,
+            "scale_filter": "disable",
+            "blend_method": "default",
+            "blend_type": "normal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "browser_source",
+      "versioned_id": "browser_source",
+      "name": "Webcam Reactions",
+      "uuid": "6cb51ab8-f9ea-40f3-88b6-f3b23b39a8e6",
+      "enabled": true,
+      "flags": 0,
+      "mixers": 0,
+      "volume": 1.0,
+      "muted": false,
+      "settings": {
+        "url": "http://127.0.0.1:8765/",
+        "is_local_file": false,
+        "width": 1280,
+        "height": 720,
+        "fps_custom": true,
+        "fps": 30,
+        "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }",
+        "shutdown": false,
+        "restart_when_active": false,
+        "reroute_audio": false
+      }
+    }
+  ],
+  "groups": [],
+  "transitions": [],
+  "current_transition": "Fade",
+  "transition_duration": 300,
+  "quick_transitions": [],
+  "saved_projectors": [],
+  "preview_locked": false,
+  "scaling_enabled": false,
+  "modules": {}
+}
