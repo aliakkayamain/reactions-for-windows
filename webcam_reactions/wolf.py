@@ -565,14 +565,18 @@ class HowlingWolf:
             self.cache[key] = img
         return img
 
-    @staticmethod
-    def _paste(canvas, img, x0, y0, opacity):
-        h, w = canvas.shape[:2]
+    def _paste(self, canvas, img, x0, y0, opacity):
+        """Alpha-blend the BGRA image onto the canvas (numpy array, or a UMat on the GPU)."""
+        from .gpu import blend_into, roi, upload_bgra
+        w, h = self.w, self.h
         ih, iw = img.shape[:2]
         fx0, fy0, fx1, fy1 = max(0, x0), max(0, y0), min(w, x0 + iw), min(h, y0 + ih)
         if fx1 <= fx0 or fy1 <= fy0:
             return
         sub = img[fy0 - y0:fy1 - y0, fx0 - x0:fx1 - x0]
-        a = sub[..., 3].astype(np.float32) * (opacity / 255.0)
-        region = canvas[fy0:fy1, fx0:fx1]
-        cv2.blendLinear(region, np.ascontiguousarray(sub[..., :3]), 1.0 - a, a, dst=region)
+        if isinstance(canvas, cv2.UMat):
+            top, a = upload_bgra(sub, opacity)
+            blend_into(roi(canvas, fx0, fy0, fx1, fy1), top, a)
+        else:
+            a = sub[..., 3].astype(np.float32) * (opacity / 255.0)
+            blend_into(canvas[fy0:fy1, fx0:fx1], np.ascontiguousarray(sub[..., :3]), a)

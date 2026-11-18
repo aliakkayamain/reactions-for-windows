@@ -21,7 +21,7 @@ SHORTCUTS = [
     ("5", "Rain"), ("6", "Confetti"), ("7", "Fireworks"), ("8", "Lasers"),
     ("9", "Grey Wolf + flag"), ("P", "Party mode on/off"),
     ("B", "Portrait (blur background)"), ("L", "Studio light"), ("C", "Center Stage"),
-    ("E", "Gestures on/off"), ("H", "Hide this list"), ("Q", "Quit"),
+    ("O", "Object detection on/off"), ("E", "Gestures on/off"), ("H", "Hide this list"), ("Q", "Quit"),
 ]
 
 
@@ -56,6 +56,14 @@ class Overlay:
         if C.MIRROR_PREVIEW != C.MIRROR_OUTPUT:
             preview = cv2.flip(preview, 1)
         W, H = C.PREVIEW_WIDTH, ph
+        if s.get("found"):                                       # object boxes, in preview coordinates
+            from .detector import draw_detections
+            k = W / C.WIDTH
+            flip = C.MIRROR_PREVIEW != C.MIRROR_OUTPUT
+            boxes = [(n, sc, ((W - x1 * k, y0 * k, W - x0 * k, y1 * k) if flip else (x0 * k, y0 * k, x1 * k, y1 * k)))
+                     for n, sc, (x0, y0, x1, y1) in s["found"]]
+            preview = np.ascontiguousarray(preview)
+            draw_detections(preview, boxes)
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
 
@@ -66,7 +74,7 @@ class Overlay:
 
         # top right: mode chips
         x = W - 12
-        for label, on, color in (("Party", s["party"], PURPLE), ("Center Stage", s["center_stage"], BLUE),
+        for label, on, color in (("Objects", s.get("objects", False), GREEN), ("Party", s["party"], PURPLE), ("Center Stage", s["center_stage"], BLUE),
                                  ("Studio", s["studio"], BLUE), ("Portrait", s["portrait"], BLUE),
                                  ("Gestures", s["gestures"], GREEN)):
             w, _ = self._pill(d, x, 12, label, self.small, color + (230,) if on else GLASS + (140,),

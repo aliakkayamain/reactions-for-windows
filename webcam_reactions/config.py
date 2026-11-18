@@ -24,6 +24,22 @@ GESTURES_ON_AT_START = True       # Hand gesture effects (E key)
 PORTRAIT_ON_AT_START = False      # Portrait mode: blurred background (B key)
 STUDIO_LIGHT_ON_AT_START = False  # Studio light: bright face, dimmed background (L key)
 CENTER_STAGE_ON_AT_START = False  # Center Stage: auto-framing that follows you (C key)
+DETECTION_ON_AT_START = True      # Object detection: phone, bottle, pen, cup, headphones (O key)
+
+# --- GPU ----------------------------------------------------------------------------
+USE_OPENCL = True                 # Flag / wolf / background blending on the GPU via OpenCL (False = CPU)
+
+# --- Object detection (GPU) -------------------------------------------------------
+DETECTION_USE_GPU = True          # Run the detector on the GPU (DirectML); False = CPU
+DETECTION_SCORE = 0.6             # Minimum confidence to show an object (0-1); higher = fewer false boxes
+DETECTION_MIN_HITS = 3            # An object must be found in this many detections in a row before it is shown
+DETECTION_MIN_SIZE = 0.03         # Ignore boxes whose shorter side is below this fraction of the frame height
+DETECTION_ON_OUTPUT = True        # True: boxes are also sent to the virtual camera / OBS
+DETECTION_HOLD = 0.4              # Keep a box this long (s) after the object is last seen (less flicker)
+DETECTION_SMOOTHING = 0.5         # Box smoothing between detections (0 = none, 0.9 = very smooth)
+DETECTION_LABELS = {              # Text shown on the boxes
+    "phone": "Phone", "bottle": "Bottle", "pen": "Pen", "cup": "Cup", "headphones": "Headphones",
+}
 
 # --- Feature tuning -------------------------------------------------------------
 PORTRAIT_BLUR = 21                # Portrait background blur strength (5-41)
@@ -53,6 +69,7 @@ WOLF_SONG_FILE = os.path.join(WOLF_CLIP_DIR, "song.mp3")  # optional background 
 GESTURE_MODEL = os.path.join(MODELS_DIR, "gesture_recognizer.task")
 SEGMENTATION_MODEL = os.path.join(MODELS_DIR, "selfie_segmenter_landscape.tflite")
 CUTOUT_MODEL = os.path.join(MODELS_DIR, "magic_touch.tflite")   # cuts the wolf out of a clip
+DETECTION_MODEL = os.path.join(MODELS_DIR, "dfine_l_obj365.onnx")  # made by tools/export_detector.py
 WINDOW_TITLE = "Webcam Reactions"
 FONT = r"C:\Windows\Fonts\segoeui.ttf"
 FONT_BOLD = r"C:\Windows\Fonts\seguisb.ttf"

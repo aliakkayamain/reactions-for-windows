@@ -497,16 +497,28 @@ class WolfEffect(Effect):
             return
         # background layer = waving flag + howling wolf; the person mask is applied once, at the
         # end, so the wolf is always behind you and the person cut-out is exactly the same as before
-        flag = self.flag.frame(self.t)
-        bg = flag.copy() if C.FLAG_OPACITY >= 0.999 else cv2.addWeighted(frame, 1 - C.FLAG_OPACITY, flag,
-                                                                          C.FLAG_OPACITY, 0)
+        from . import gpu
+        on_gpu = gpu.enabled()                                  # OpenCL: flag, wolf and blending on the GPU
+        if on_gpu:
+            bg = self.flag.frame_gpu(self.t)
+            if C.FLAG_OPACITY < 0.999:
+                bg = cv2.addWeighted(cv2.UMat(frame), 1 - C.FLAG_OPACITY, bg, C.FLAG_OPACITY, 0)
+        else:
+            flag = self.flag.frame(self.t)
+            bg = flag.copy() if C.FLAG_OPACITY >= 0.999 else cv2.addWeighted(frame, 1 - C.FLAG_OPACITY, flag,
+                                                                              C.FLAG_OPACITY, 0)
         mouth = self.wolf.draw(bg, self.t, 1.0)
         if mouth is not None and self.wolf.howling(self.t):
             self._howl_rings(bg, mouth)
         if mask is None:                                        # no person mask: translucent layer
-            cv2.addWeighted(frame, 1 - 0.35 * vis, bg, 0.35 * vis, 0, dst=frame)
+            out = cv2.addWeighted(cv2.UMat(frame) if on_gpu else frame, 1 - 0.35 * vis, bg, 0.35 * vis, 0)
+        elif on_gpu:
+            m = cv2.UMat(np.ascontiguousarray(mask, np.float32))
+            out = gpu.blend_into(cv2.UMat(frame), bg, cv2.addWeighted(m, -vis, m, 0.0, vis))   # (1 - mask) * vis
+        else:
+            blend(frame, bg, (1.0 - mask) * vis)
             return
-        blend(frame, bg, (1.0 - mask) * vis)
+        frame[:] = out.get() if isinstance(out, cv2.UMat) else out
 
     def _howl_rings(self, bg, mouth):
         """Faint sound-wave arcs leaving the wolf's mouth."""
@@ -517,8 +529,9 @@ class WolfEffect(Effect):
         x1, y1 = min(self.w, int(mx) + reach), min(self.h, int(my) + reach)
         if x1 <= x0 or y1 <= y0:
             return
-        region = bg[y0:y1, x0:x1]
-        layer = np.zeros_like(region)
+        from .gpu import roi
+        region = roi(bg, x0, y0, x1, y1) if isinstance(bg, cv2.UMat) else bg[y0:y1, x0:x1]
+        layer = np.zeros((y1 - y0, x1 - x0, 3), np.uint8)
         for k in range(4):
             o = (self.t * 0.9 + k / 4) % 1.0
             r = int(self.h * (0.04 + 0.32 * o))
@@ -526,7 +539,7 @@ class WolfEffect(Effect):
             cv2.ellipse(layer, (int(mx) - x0, int(my) - y0), (r, r), direction, -28, 28, (level,) * 3,
                         max(2, int(self.h * 0.006)), cv2.LINE_AA)
         cv2.GaussianBlur(layer, (0, 0), 2.0, dst=layer)
-        cv2.add(region, layer, dst=region)
+        cv2.add(region, cv2.UMat(layer) if isinstance(region, cv2.UMat) else layer, dst=region)
 
     def draw(self, frame):
         pass                                                    # everything is drawn behind the person

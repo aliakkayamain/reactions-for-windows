@@ -48,6 +48,44 @@ class WavingFlag:
         self.xx, self.yy = xx, yy
         self.xn, self.yn = xx / self.cw, yy / self.ch           # 0 = hoist side, 1 = fly end
         self.out = np.empty((h, w, 3), np.uint8)
+        self.gpu = None
+
+    def _gpu_init(self):
+        """Precompute the wave as trigonometric maps on the GPU: sin(P - wt) = sinP*cos(wt) - cosP*sin(wt),
+        so every frame is only a weighted sum of fixed maps (no per-pixel sin on the CPU)."""
+        xn, yn = self.xn, self.yn
+        freedom = 0.35 + 0.65 * xn
+        p1 = xn * 9.0 + yn * 1.5
+        p2 = xn * 15.0 - yn * 3.0
+        up = lambda a: cv2.UMat(np.ascontiguousarray(a, np.float32))
+        kx, ky = 0.008 * self.cw * freedom, 0.035 * self.ch * freedom
+        self.gpu = {
+            "base": cv2.UMat(self.base), "xx": up(self.xx), "yy": up(self.yy),
+            # map_x = xx + kx*cos(f1);  map_y = yy + ky*(0.65 sin f1 + 0.35 sin f2)
+            "xs1": up(kx * np.sin(p1)), "xc1": up(kx * np.cos(p1)),
+            "ys1": up(ky * 0.65 * np.sin(p1)), "yc1": up(ky * 0.65 * np.cos(p1)),
+            "ys2": up(ky * 0.35 * np.sin(p2)), "yc2": up(ky * 0.35 * np.cos(p2)),
+            # shade = 1 + 0.24*freedom*(0.65 cos f1 + 0.56 cos f2)
+            "sc1": up(0.24 * freedom * 0.65 * np.cos(p1)), "ss1": up(0.24 * freedom * 0.65 * np.sin(p1)),
+            "sc2": up(0.24 * freedom * 0.56 * np.cos(p2)), "ss2": up(0.24 * freedom * 0.56 * np.sin(p2)),
+        }
+
+    def frame_gpu(self, t):
+        """Same image as frame(t), computed with OpenCL; returns a UMat (h x w, BGR)."""
+        if self.gpu is None:
+            self._gpu_init()
+        g = self.gpu
+        c1, s1 = math.cos(4.2 * t), math.sin(4.2 * t)
+        c2, s2 = math.cos(6.3 * t), math.sin(6.3 * t)
+        # cos(P - wt) = cosP cos(wt) + sinP sin(wt);  sin(P - wt) = sinP cos(wt) - cosP sin(wt)
+        map_x = cv2.add(g["xx"], cv2.addWeighted(g["xc1"], c1, g["xs1"], s1, 0))
+        map_y = cv2.add(cv2.add(g["yy"], cv2.addWeighted(g["ys1"], c1, g["yc1"], -s1, 0)),
+                        cv2.addWeighted(g["ys2"], c2, g["yc2"], -s2, 0))
+        shade = cv2.add(cv2.addWeighted(g["sc1"], c1, g["ss1"], s1, 1.0),
+                        cv2.addWeighted(g["sc2"], c2, g["ss2"], s2, 0))
+        warped = cv2.remap(g["base"], map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        lit = cv2.multiply(warped, cv2.merge([shade, shade, shade]), dtype=cv2.CV_8U)
+        return cv2.resize(lit, (self.w, self.h), interpolation=cv2.INTER_LINEAR)
 
     def frame(self, t):
         """Flag image at time t (w x h, BGR)."""
