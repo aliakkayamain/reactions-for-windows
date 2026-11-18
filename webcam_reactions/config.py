@@ -31,6 +31,14 @@ STUDIO_BACKGROUND_LEVEL = 0.45    # Studio light background brightness (0 = blac
 CENTER_STAGE_MAX_ZOOM = 1.7       # Center Stage maximum zoom
 PARTY_DURATION = 12.0             # Length of party mode when started with the gesture (s)
 FLAG_OPACITY = 1.0                # Opacity of the flag behind you in the wolf effect (0-1)
+WOLF_SIDE = "right"               # Side the howling wolf comes out on, from behind you ("right" / "left")
+WOLF_SIZE = 0.9                   # Wolf height relative to the frame height
+WOLF_SONG_START = 21.0            # Background song for the wolf effect: segment start (seconds into the file)
+WOLF_SONG_END = 32.0              # Segment end in seconds (0 = play to the end of the file)
+WOLF_SONG_VOLUME = 0.8            # Song volume (0-1)
+WOLF_CLIP_CUTOUT = True           # Clip with a natural background: cut the wolf out automatically (cached)
+WOLF_CLIP_SEED = (0.62, 0.6)      # A point on the wolf in the clip's FIRST frame (x, y as 0-1 of the frame)
+WOLF_OFFSET = 0.3                 # How far the wolf moves out to the side (0 = stays behind you, 0.5 = edge)
 
 # --- OBS --------------------------------------------------------------------------
 OBS_STREAM_PORT = 8765      # OBS "Browser" source URL: http://127.0.0.1:8765/
@@ -40,8 +48,11 @@ OBS_JPEG_QUALITY = 85       # OBS stream image quality (50-95)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(ROOT_DIR, "models")
 EMOJI_DIR = os.path.join(ROOT_DIR, "assets", "emoji")
+WOLF_CLIP_DIR = os.path.join(ROOT_DIR, "assets", "wolf")   # optional real wolf clip (see assets/wolf/README.txt)
+WOLF_SONG_FILE = os.path.join(WOLF_CLIP_DIR, "song.mp3")  # optional background song (see assets/wolf/README.txt)
 GESTURE_MODEL = os.path.join(MODELS_DIR, "gesture_recognizer.task")
 SEGMENTATION_MODEL = os.path.join(MODELS_DIR, "selfie_segmenter_landscape.tflite")
+CUTOUT_MODEL = os.path.join(MODELS_DIR, "magic_touch.tflite")   # cuts the wolf out of a clip
 WINDOW_TITLE = "Webcam Reactions"
 FONT = r"C:\Windows\Fonts\segoeui.ttf"
 FONT_BOLD = r"C:\Windows\Fonts\seguisb.ttf"

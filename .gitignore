@@ -14,3 +14,7 @@ assets/emoji/animated/
 .vscode/
 .idea/
 Thumbs.db
+
+# Your own wolf clip / song (keep copyrighted media out of the public repo)
+assets/wolf/*
+!assets/wolf/README.txt

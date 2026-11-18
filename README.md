@@ -95,7 +95,7 @@ Hold the gesture still for about **1 second**; a progress ring in the preview fi
 | 👍 Thumbs up | 3D thumbs up with a light ring |
 | 👎 Thumbs down | 3D thumbs down |
 | ✌️ Victory (one hand) | Colorful 3D balloons |
-| 🐺 Grey Wolf sign (one hand) | Waving Turkish flag **behind you** and howling wolves around you |
+| 🐺 Grey Wolf sign (one hand) | Waving Turkish flag **behind you**; a grey wolf comes out from behind you and howls (drop your own clip in `assets/wolf/`) |
 | 👍👍 Two thumbs up | Fireworks |
 | 👎👎 Two thumbs down | Rain clouds and rain |
 | ✌️✌️ Victory with both hands | Confetti and party poppers |
@@ -181,6 +181,7 @@ reactions-for-windows/
 │   ├── gestures.py           # gesture detection
 │   ├── video_modes.py        # portrait, studio light, center stage
 │   ├── flag.py               # waving flag renderer
+│   ├── wolf.py               # howling wolf (real clip from assets/wolf/ or procedural)
 │   ├── graphics.py           # emoji sprites, blending, glow
 │   ├── overlay.py            # preview window UI
 │   └── obs_stream.py         # local stream for OBS

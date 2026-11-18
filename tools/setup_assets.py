@@ -23,6 +23,8 @@ MODELS = {
         "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
     "selfie_segmenter_landscape.tflite":
         "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite",
+    "magic_touch.tflite":
+        "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite",
 }
 FRAME_SIZE = 224     # px
 MAX_FRAMES = 48      # longer animations are resampled evenly (keeps memory low)

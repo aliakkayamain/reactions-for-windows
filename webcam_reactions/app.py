@@ -77,6 +77,10 @@ def main():
     print("Emoji loaded: %d static, %d animated" % (len(emoji.static), len(emoji.animated)))
     if not emoji.animated:
         print("WARNING: animated emoji not built yet. " + SETUP_HINT)
+    from .wolf import get_clip
+    get_clip()                      # load an optional real wolf clip now, not on the first wolf gesture
+    from .sound import close_song, get_song
+    get_song()
 
     # 1) Gesture detector
     from .gestures import GestureDetector
@@ -172,6 +176,8 @@ def main():
                 party.stop()
                 print("Party mode off")
             return
+        if effect is not None:
+            effect.close()
         effect, active = E.create_effect(name, W, H, center), name
         print("Effect: " + E.LABELS.get(name, name))
 
@@ -252,6 +258,7 @@ def main():
                     party = None
             if effect is not None:
                 if not state["gestures"]:
+                    effect.close()
                     effect = None
                 else:
                     effect.update(dt)
@@ -259,6 +266,7 @@ def main():
                         effect.draw_behind(frame, mask)
                     effect.draw(frame)
                     if effect.finished:
+                        effect.close()
                         effect = None
                         cooldown_until = now + C.COOLDOWN
             if effect is None:
@@ -307,6 +315,9 @@ def main():
         pass
     finally:
         duration = max(1e-6, time.perf_counter() - started)
+        if effect is not None:
+            effect.close()
+        close_song()
         camera.release()
         if vcam:
             vcam.close()
