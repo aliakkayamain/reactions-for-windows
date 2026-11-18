@@ -77,6 +77,10 @@ def main():
     print("Emoji loaded: %d static, %d animated" % (len(emoji.static), len(emoji.animated)))
     if not emoji.animated:
         print("WARNING: animated emoji not built yet. " + SETUP_HINT)
+    from .wolf import get_clip
+    get_clip()                      # load an optional real wolf clip now, not on the first wolf gesture
+    from .sound import close_song, get_song
+    get_song()
 
     # 1) Gesture detector
     from .gestures import GestureDetector
@@ -97,6 +101,23 @@ def main():
         segmenter = None
         print("WARNING: person segmentation unavailable (%s). Portrait, Studio Light and Center Stage "
               "are disabled; the flag will be translucent. %s" % (e, SETUP_HINT))
+
+    # 2a) OpenCL compositing (GPU)
+    from . import gpu
+    gpu.warmup(W, H)
+    print("Compositing: %s" % ("GPU (OpenCL, %s)" % gpu.device_name() if gpu.enabled() else "CPU"))
+
+    # 2b) Object detector (GPU)
+    objects = None
+    if os.path.isfile(C.DETECTION_MODEL):
+        try:
+            from .detector import ObjectDetector
+            objects = ObjectDetector(W, H)
+            print("Object detection: %s" % objects.device)
+        except Exception as e:
+            print("WARNING: object detection unavailable (%s)" % e)
+    else:
+        print("Object detection disabled: %s not found (see README, scripts\\export_detector.bat)." % C.DETECTION_MODEL)
 
     # 3) Physical camera
     camera = open_camera()
@@ -151,7 +172,8 @@ def main():
     state = {"gestures": C.GESTURES_ON_AT_START,
              "portrait": C.PORTRAIT_ON_AT_START and segmenter is not None,
              "studio": C.STUDIO_LIGHT_ON_AT_START and segmenter is not None,
-             "center_stage": C.CENTER_STAGE_ON_AT_START and segmenter is not None}
+             "center_stage": C.CENTER_STAGE_ON_AT_START and segmenter is not None,
+             "objects": C.DETECTION_ON_AT_START and objects is not None}
     effect, active, party = None, None, None
     candidate, candidate_since, last_seen = None, 0.0, 0.0
     cooldown_until = 0.0
@@ -172,6 +194,8 @@ def main():
                 party.stop()
                 print("Party mode off")
             return
+        if effect is not None:
+            effect.close()
         effect, active = E.create_effect(name, W, H, center), name
         print("Effect: " + E.LABELS.get(name, name))
 
@@ -210,6 +234,10 @@ def main():
                 apply_portrait(frame, mask)
             if state["studio"] and mask is not None:
                 apply_studio_light(frame, mask)
+
+            # --- objects (GPU, background thread) ---
+            if state["objects"]:
+                objects.submit(frame)
 
             # --- gestures ---
             detector.submit(frame)
@@ -252,6 +280,7 @@ def main():
                     party = None
             if effect is not None:
                 if not state["gestures"]:
+                    effect.close()
                     effect = None
                 else:
                     effect.update(dt)
@@ -259,18 +288,29 @@ def main():
                         effect.draw_behind(frame, mask)
                     effect.draw(frame)
                     if effect.finished:
+                        effect.close()
                         effect = None
                         cooldown_until = now + C.COOLDOWN
             if effect is None:
                 active = None
 
             # --- output ---
+            found = objects.detections() if state["objects"] else []
+            if found and effect is not None and effect.uses_background and mask is not None:
+                from .detector import visible_in
+                found = visible_in(found, mask)                 # objects hidden behind the flag: no box
+            out = frame
+            if found and C.DETECTION_ON_OUTPUT:
+                from .detector import draw_detections
+                out = frame.copy()                              # the preview draws its own (unmirrored) labels
+                draw_detections(out, found)
             if vcam:
-                vcam.send(frame)
+                vcam.send(out)
             if obs:
-                obs.send(frame)
+                obs.send(out)
             ui = dict(state, fps=fps, hands=hands, candidate=candidate, progress=progress, active=active,
-                      party=party is not None, virtual_cam=vcam is not None, obs=obs.viewers if obs else -1)
+                      party=party is not None, virtual_cam=vcam is not None, obs=obs.viewers if obs else -1,
+                      found=found)
             cv2.imshow(C.WINDOW_TITLE, overlay.render(frame, ui))
 
             elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -292,6 +332,12 @@ def main():
                     state["gestures"] = not state["gestures"]
                 elif key == ord("h"):
                     overlay.show_help = not overlay.show_help
+                elif key == ord("o"):
+                    if objects is None:
+                        print("Object detection is not available (model missing or failed to load).")
+                    else:
+                        state["objects"] = not state["objects"]
+                        print("object detection %s" % ("ON" if state["objects"] else "OFF"))
                 elif key in (ord("b"), ord("l"), ord("c")):
                     mode = {ord("b"): "portrait", ord("l"): "studio", ord("c"): "center_stage"}[key]
                     if segmenter is None:
@@ -307,12 +353,17 @@ def main():
         pass
     finally:
         duration = max(1e-6, time.perf_counter() - started)
+        if effect is not None:
+            effect.close()
+        close_song()
         camera.release()
         if vcam:
             vcam.close()
         if obs:
             obs.close()
         detector.close()
+        if objects:
+            objects.close()
         if segmenter:
             segmenter.close()
         cv2.destroyAllWindows()

@@ -12,9 +12,13 @@ a disco party, a waving flag with howling wolves...) appear on your video. The r
 - **Video effects** (like on macOS): Portrait mode (blurred background), Studio Light and Center Stage
   (auto-framing).
 - **Modern visuals**: 3D and animated emoji, glow and bloom lighting, soft shadows, smooth animation.
+- **Object detection on the GPU**: phone, bottle, pen, cup and headphones are boxed and labelled
+  live (D-FINE-L Objects365 model on ONNX Runtime + DirectML). Toggle with `O`.
 - **Keyboard shortcuts** to trigger any effect without a gesture.
 - **Two outputs**: virtual camera for video calls, and a local stream for OBS Studio.
-- Runs fully offline on the CPU, about 30 FPS at 1280×720.
+- Runs fully offline, about 30 FPS at 1280×720. Object detection runs on the GPU (DirectML, any DirectX 12
+  card), and the flag / wolf / background compositing on the GPU via OpenCL; both fall back to the CPU.
+  MediaPipe (hand gestures, person segmentation) has no GPU support on Windows and stays on the CPU.
 
 ## Requirements
 
@@ -64,6 +68,15 @@ It does three things (takes a few minutes the first time):
 
 When it prints **"Setup complete"** you're done. You only need to do this once.
 
+### 4b. Optional: object detection model
+Object detection (phone, bottle, pen, cup, headphones) needs `models\dfine_l_obj365.onnx`. It is made once
+from the public D-FINE weights (needs Git and ~1.5 GB of temporary space, takes a few minutes):
+```
+scripts\export_detector.bat
+```
+Without it the app runs normally, just without object detection. Note: the model is pretrained on the
+Objects365 dataset, whose terms may restrict commercial use.
+
 ### 5. Start the app
 Double-click **`scripts\run.bat`**, or:
 ```bash
@@ -95,7 +108,7 @@ Hold the gesture still for about **1 second**; a progress ring in the preview fi
 | 👍 Thumbs up | 3D thumbs up with a light ring |
 | 👎 Thumbs down | 3D thumbs down |
 | ✌️ Victory (one hand) | Colorful 3D balloons |
-| 🐺 Grey Wolf sign (one hand) | Waving Turkish flag **behind you** and howling wolves around you |
+| 🐺 Grey Wolf sign (one hand) | Waving Turkish flag **behind you** with a howling wolf, optionally with a song (see [Grey Wolf effect](#grey-wolf-effect)) |
 | 👍👍 Two thumbs up | Fireworks |
 | 👎👎 Two thumbs down | Rain clouds and rain |
 | ✌️✌️ Victory with both hands | Confetti and party poppers |
@@ -108,6 +121,38 @@ Hold the gesture still for about **1 second**; a progress ring in the preview fi
 - **Heart:** thumb tips touching at the bottom, index fingertips touching at the top.
 - For two-hand gestures, raise **both hands at the same time**.
 
+### Grey Wolf effect
+The flag and the wolf are drawn **behind you**: they are composited into one background layer and your
+person cut-out is applied last, so you always stay in front and your outline is not changed.
+
+**Your own wolf clip (optional).** Put one file in `assets\wolf\` (for example `wolf.mp4`):
+
+| Clip | What happens |
+|---|---|
+| GIF / WebP / PNG with transparency | Used as-is |
+| Video on a green screen or plain background | The background colour is keyed out |
+| Ordinary video (natural background) | The wolf is cut out frame by frame with MediaPipe's interactive segmenter (`models\magic_touch.tflite`, downloaded by setup). This runs once (~25 s) and is cached as `<file>.cutout.npz`. If the wrong thing is cut out, set `WOLF_CLIP_SEED` to a point on the wolf in the first frame. |
+
+The clip is cropped to the wolf and looped forwards/backwards. A wolf that is cut off at the edge of the
+video is placed against that edge of the picture. Without a clip, a drawn wolf is used.
+
+**Song (optional).** Save it as `assets\wolf\song.mp3` and set the part to play in `config.py`, e.g.
+`WOLF_SONG_START = 21.0`, `WOLF_SONG_END = 32.0`. The effect lasts as long as that part. The song plays on
+the PC's speakers; the virtual camera carries video only.
+
+Files in `assets\wolf\` are ignored by Git. Only use clips and music you have the right to use.
+
+### Object detection
+Phones, bottles, pens, cups and headphones get a coloured box and a label (`O` turns it on/off). It needs
+the model from [step 4b](#4b-optional-object-detection-model).
+
+- Runs on the GPU (DirectML) on a background thread, so the video does not wait for it (~20 ms per detection
+  on an RTX 5060 laptop GPU; ~240 ms on the CPU).
+- To avoid false boxes, an object is shown only when its confidence is at least `DETECTION_SCORE` (0.6),
+  it was found in `DETECTION_MIN_HITS` (3) detections in a row and it is not tiny. While the flag is
+  behind you, objects in the hidden background get no box.
+- Too many false boxes: raise `DETECTION_SCORE` (e.g. 0.7). Real objects missed: lower it (e.g. 0.5).
+
 ### Keyboard shortcuts
 Click the preview window first.
 
@@ -118,6 +163,7 @@ Click the preview window first.
 | `B` | Portrait mode — blurred background |
 | `L` | Studio Light — brighter face, dimmed background |
 | `C` | Center Stage — follows and frames you |
+| `O` | Object detection on/off (phone, bottle, pen, cup, headphones) |
 | `E` | Turn gesture detection on/off |
 | `H` | Show/hide the shortcut list |
 | `Q` | Quit |
@@ -149,6 +195,14 @@ Open `webcam_reactions\config.py` in any text editor, change values and restart 
 | `PORTRAIT_BLUR` | Background blur strength |
 | `PARTY_DURATION` | Party mode length when started by gesture |
 | `OBS_STREAM_PORT` | Port of the OBS stream |
+| `DETECTION_ON_AT_START`, `DETECTION_SCORE` | Object detection at startup, minimum confidence |
+| `DETECTION_MIN_HITS`, `DETECTION_MIN_SIZE` | Detections in a row before a box is shown, minimum box size |
+| `DETECTION_ON_OUTPUT` | Also send the object boxes to the virtual camera / OBS |
+| `DETECTION_LABELS` | Text shown on the boxes (e.g. Turkish names) |
+| `DETECTION_USE_GPU`, `USE_OPENCL` | GPU for detection / for compositing (`False` = CPU) |
+| `FLAG_OPACITY`, `WOLF_SIDE`, `WOLF_SIZE`, `WOLF_OFFSET` | Grey Wolf effect: flag opacity, wolf side, size and position |
+| `WOLF_SONG_START`, `WOLF_SONG_END`, `WOLF_SONG_VOLUME` | Song part (seconds) and volume |
+| `WOLF_CLIP_CUTOUT`, `WOLF_CLIP_SEED` | Cut-out of a natural-background wolf clip |
 
 ## Troubleshooting
 
@@ -157,11 +211,15 @@ Open `webcam_reactions\config.py` in any text editor, change values and restart 
 | The call app shows a black / empty "OBS Virtual Camera" | Webcam Reactions isn't running. Start it, then switch the camera in the call app to another one and back. |
 | "Could not open the camera" | Another app is using the webcam. Close it (or set its camera to OBS Virtual Camera) and restart. Also check Windows Settings → Privacy & security → Camera → allow desktop apps. |
 | Wrong camera / black preview | Set `CAMERA_INDEX` to `1` or `2` in `config.py`. |
-| "Could not start the virtual camera" | Install OBS Studio. If OBS's own virtual camera is running, stop it, or use `scripts\run_obs.bat`. |
+| "Could not start the virtual camera" | Another program is using OBS Virtual Camera: usually a second copy of this app (close it) or OBS's own Start Virtual Camera (stop it, or use `scripts\run_obs.bat`). If OBS Studio is not installed, install it. |
 | "OBS Virtual Camera" is not listed in the call app | Fully quit and reopen the call app while Webcam Reactions is running. If it's still missing, open OBS once and click Start/Stop Virtual Camera. |
 | Gestures are not detected | Use good lighting and keep your hand clearly visible, a bit away from your face. The preview shows `Hands 0` when no hand is seen. |
 | Laggy video | Turn off Portrait / Studio Light / Center Stage, or lower `WIDTH`/`HEIGHT`. |
 | "Model file not found" | Run `scripts\setup.bat` again. |
+| "Object detection disabled" at start | The detection model is missing: run `scripts\export_detector.bat` (step 4b). |
+| Boxes on things that are not there | Raise `DETECTION_SCORE` or `DETECTION_MIN_HITS` in `config.py`. |
+| The song does not play | Check `assets\wolf\song.mp3` and the `WOLF_SONG_*` times. The console shows `Wolf song loaded` when it is found. |
+| The camera image looks grey / dull | The app does not change the camera's own settings. Add light in front of you and check the camera's brightness / saturation in its settings. |
 | The flag or text looks mirrored in my own view | Call apps mirror your self-view; other participants see it correctly. |
 
 ## Project structure
@@ -172,6 +230,7 @@ reactions-for-windows/
 ├── requirements.txt
 ├── scripts/                  # double-click helpers
 │   ├── setup.bat             # one-time setup
+│   ├── export_detector.bat   # one-time export of the object detection model
 │   ├── run.bat               # start (virtual camera)
 │   └── run_obs.bat           # start (OBS mode)
 ├── webcam_reactions/         # application package (python -m webcam_reactions)
@@ -179,8 +238,12 @@ reactions-for-windows/
 │   ├── config.py             # user settings
 │   ├── effects.py            # all effects
 │   ├── gestures.py           # gesture detection
+│   ├── detector.py           # object detection (GPU, ONNX Runtime + DirectML)
+│   ├── gpu.py                # OpenCL compositing helpers
+│   ├── sound.py              # wolf effect song segment
 │   ├── video_modes.py        # portrait, studio light, center stage
 │   ├── flag.py               # waving flag renderer
+│   ├── wolf.py               # howling wolf (real clip from assets/wolf/ or procedural)
 │   ├── graphics.py           # emoji sprites, blending, glow
 │   ├── overlay.py            # preview window UI
 │   └── obs_stream.py         # local stream for OBS
@@ -190,7 +253,9 @@ reactions-for-windows/
 │   └── licenses/
 ├── models/                   # MediaPipe models (downloaded by setup)
 ├── obs/scene_collection.json # ready-made OBS scene
-└── tools/setup_assets.py     # downloads models, builds animated emoji
+└── tools/
+    ├── setup_assets.py       # downloads models, builds animated emoji
+    └── export_detector.py    # D-FINE -> ONNX (DirectML-safe)
 ```
 
 Command-line options (from the project folder):
@@ -202,6 +267,7 @@ venv\Scripts\python -m webcam_reactions --help
 
 ## Credits
 - Hand gesture and person segmentation models: [Google MediaPipe](https://ai.google.dev/edge/mediapipe) (Apache 2.0)
+- Object detection: [D-FINE](https://github.com/Peterande/D-FINE) (Apache 2.0), weights pretrained on Objects365
 - 3D emoji: [Microsoft Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (MIT) — `assets/licenses/FLUENT_EMOJI_LICENSE.txt`
 - Animated emoji: [Google Noto Animated Emoji](https://googlefonts.github.io/noto-emoji-animation/) (CC BY 4.0)
 - Virtual camera: [pyvirtualcam](https://github.com/letmaik/pyvirtualcam) with the OBS Virtual Camera driver

@@ -60,6 +60,9 @@ class Effect:
     def draw(self, frame):
         raise NotImplementedError
 
+    def close(self):
+        """Called when the effect is removed (stop sounds etc.)."""
+
     def stop(self):
         """Fade out an open-ended effect."""
         self.duration = min(self.duration, self.t + 0.8)
@@ -474,41 +477,72 @@ class WolfEffect(Effect):
     def __init__(self, w, h, center=None):
         super().__init__(w, h, center)
         from .flag import WavingFlag
+        from .wolf import HowlingWolf
+        from .sound import get_song
         self.flag = WavingFlag(w, h)
-        n = 6
-        self.pack = [{"angle": 2 * math.pi * i / n + random.uniform(-0.2, 0.2), "born": 0.5 + i * 0.12,
-                      "size": random.uniform(0.13, 0.17) * h, "phase": random.uniform(0, 3)} for i in range(n)]
-        self.wolf = "anim_wolf" if EMOJI.has("anim_wolf") else "wolf"
+        self.wolf = HowlingWolf(w, h)
+        self.song = get_song()
+        if self.song is not None:
+            if self.song.duration:                              # effect lasts as long as the song segment
+                self.duration = max(self.duration, self.song.duration + 0.3)
+            self.song.play()
+
+    def close(self):
+        if self.song is not None:
+            self.song.stop()
 
     def draw_behind(self, frame, mask):
-        vis = fade_in_out(self.t, self.duration, 0.6, 0.8) * C.FLAG_OPACITY
+        vis = fade_in_out(self.t, self.duration, 0.6, 0.8)
         if vis <= 0.01:
             return
-        flag = self.flag.frame(self.t)
-        if mask is None:                                        # no person mask: translucent flag
-            cv2.addWeighted(frame, 1 - 0.35 * vis, flag, 0.35 * vis, 0, dst=frame)
+        # background layer = waving flag + howling wolf; the person mask is applied once, at the
+        # end, so the wolf is always behind you and the person cut-out is exactly the same as before
+        from . import gpu
+        on_gpu = gpu.enabled()                                  # OpenCL: flag, wolf and blending on the GPU
+        if on_gpu:
+            bg = self.flag.frame_gpu(self.t)
+            if C.FLAG_OPACITY < 0.999:
+                bg = cv2.addWeighted(cv2.UMat(frame), 1 - C.FLAG_OPACITY, bg, C.FLAG_OPACITY, 0)
+        else:
+            flag = self.flag.frame(self.t)
+            bg = flag.copy() if C.FLAG_OPACITY >= 0.999 else cv2.addWeighted(frame, 1 - C.FLAG_OPACITY, flag,
+                                                                              C.FLAG_OPACITY, 0)
+        mouth = self.wolf.draw(bg, self.t, 1.0)
+        if mouth is not None and self.wolf.howling(self.t):
+            self._howl_rings(bg, mouth)
+        if mask is None:                                        # no person mask: translucent layer
+            out = cv2.addWeighted(cv2.UMat(frame) if on_gpu else frame, 1 - 0.35 * vis, bg, 0.35 * vis, 0)
+        elif on_gpu:
+            m = cv2.UMat(np.ascontiguousarray(mask, np.float32))
+            out = gpu.blend_into(cv2.UMat(frame), bg, cv2.addWeighted(m, -vis, m, 0.0, vis))   # (1 - mask) * vis
+        else:
+            blend(frame, bg, (1.0 - mask) * vis)
             return
-        blend(frame, flag, (1.0 - mask) * vis)
+        frame[:] = out.get() if isinstance(out, cv2.UMat) else out
+
+    def _howl_rings(self, bg, mouth):
+        """Faint sound-wave arcs leaving the wolf's mouth."""
+        mx, my, ang = mouth
+        direction = math.degrees(ang) + 180 if self.wolf.side > 0 else -math.degrees(ang)   # along the snout
+        reach = int(self.h * 0.4)                               # work only in the area around the mouth
+        x0, y0 = max(0, int(mx) - reach), max(0, int(my) - reach)
+        x1, y1 = min(self.w, int(mx) + reach), min(self.h, int(my) + reach)
+        if x1 <= x0 or y1 <= y0:
+            return
+        from .gpu import roi
+        region = roi(bg, x0, y0, x1, y1) if isinstance(bg, cv2.UMat) else bg[y0:y1, x0:x1]
+        layer = np.zeros((y1 - y0, x1 - x0, 3), np.uint8)
+        for k in range(4):
+            o = (self.t * 0.9 + k / 4) % 1.0
+            r = int(self.h * (0.04 + 0.32 * o))
+            level = int(200 * (1 - o) ** 1.5)
+            cv2.ellipse(layer, (int(mx) - x0, int(my) - y0), (r, r), direction, -28, 28, (level,) * 3,
+                        max(2, int(self.h * 0.006)), cv2.LINE_AA)
+        cv2.GaussianBlur(layer, (0, 0), 2.0, dst=layer)
+        cv2.add(region, cv2.UMat(layer) if isinstance(region, cv2.UMat) else layer, dst=region)
 
     def draw(self, frame):
-        vis = fade_in_out(self.t, self.duration, 0.6, 0.8)
-        cx, cy = self.w * 0.5, self.h * 0.52
-        rx, ry = self.w * 0.4, self.h * 0.38
-        orbit = []                                              # small wolves circling around you
-        for k in self.pack:
-            age = self.t - k["born"]
-            if age <= 0:
-                continue
-            a = k["angle"] + self.t * 0.8
-            depth = (math.sin(a) + 1) / 2                       # 0 = behind (top), 1 = in front (bottom)
-            size = k["size"] * (0.75 + 0.4 * depth) * ease_out_back(age / 0.4)
-            orbit.append((depth, cx + math.cos(a) * rx, cy + math.sin(a) * ry, size, age + k["phase"]))
-        for _, x, y, size, t in sorted(orbit):
-            EMOJI.draw(frame, self.wolf, x, y, size, vis * 0.95, time=t)
-        size = self.h * 0.52 * ease_out_back((self.t - 0.2) / 0.5)   # big howling wolf, bottom right
-        x, y = self.w * 0.83, self.h * 0.72
-        EMOJI.draw_shadow(frame, self.wolf, x, y, size, vis, time=self.t * 0.8)
-        EMOJI.draw(frame, self.wolf, x, y, size, vis, time=self.t * 0.8)
+        pass                                                    # everything is drawn behind the person
 
 
 # =============================================================================
